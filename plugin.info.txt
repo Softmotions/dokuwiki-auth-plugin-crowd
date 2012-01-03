@@ -1,0 +1,7 @@
+base   crowd
+author Jan Schumann
+email  js@schumann-it.com
+date   2012-01-02
+name   crowd auth plugin
+desc   Provides Athentication against Atlassian Crowd
+url    http://www.dokuwiki.org/plugin:crowd
