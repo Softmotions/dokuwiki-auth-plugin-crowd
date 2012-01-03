@@ -1,0 +1,20 @@
+An Athentication plugin for Dokuwiki
+====================================
+
+Installation
+------------
+
+Look for the latest Tag, copy the ZIP-File link and paste it in the plugin-Download Box and thats it.
+
+Configuration
+-------------
+
+Example:
+
+$conf['authtype']  = 'crowd';
+$conf['superuser'] = '@wiki-admins';
+$conf['manager']   = '@wiki-managers';
+$conf['plugin']['crowd']['app_name']       = 'wiki';
+$conf['plugin']['crowd']['app_credential'] = 'somepass';
+$conf['plugin']['crowd']['service_url']    = 'http://crowd.example.com:8095/crowd/services/SecurityServer?wsdl';
+
