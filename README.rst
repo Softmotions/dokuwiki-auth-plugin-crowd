@@ -1,4 +1,4 @@
-An Athentication plugin for Dokuwiki
+An Authentication plugin for Dokuwiki
 ====================================
 
 Installation
