@@ -2,6 +2,8 @@
 // must be run within Dokuwiki
 if(!defined('DOKU_INC')) die();
 
+require_once('Services/Atlassian/Crowd.php');
+
 // define crowd cookie
 if (!defined('CROWD_TOKEN_COOKIE')) {
 	define('CROWD_TOKEN_COOKIE', 'crowd.token_key');
@@ -42,25 +44,6 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
         $this->cando['external'] = true;
         $this->cando['logout'] = true; 
     }
-
-    /**
-     * Return user info
-     *
-     * Returns info about the given user needs to contain
-     * at least these fields:
-     *
-     * name string  full name of the user
-     * mail string  email addres of the user
-     * grps array   list of groups the user is in
-     *
-     * @author  Andreas Gohr <andi@splitbrain.org>
-     * @param string $user
-     * @return array|bool
-     */
-    public function getUserData($user) {
-        if($this->users === null) $this->_loadUserData();
-        return isset($this->users[$user]) ? $this->users[$user] : false;
-    }
     
     /**
      * Do all authentication [ OPTIONAL ]
@@ -98,7 +81,6 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
     public function trustExternal($user, $pass, $sticky = false) {
 		//crowd.token_key cookie
 		global $USERINFO, $ID;
-		$crowd = $this->_getCrowd();
 		
 		if (!empty($_SESSION[DOKU_COOKIE]['crowd']['info'])) {
             $USERINFO['name'] = $_SESSION[DOKU_COOKIE]['crowd']['info']['name'];
@@ -108,6 +90,7 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
             return true;
 		}
 
+		$crowd = $this->_getCrowd();
 		$token = NULL;
 		if (empty($user)) {
 			$token = $_COOKIE[CROWD_TOKEN_COOKIE];
@@ -116,7 +99,9 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
 				return false;
 			}
 			$token = $this->user_tokens[$user];
-			$_COOKIE[CROWD_TOKEN_COOKIE] = $token;
+		}
+		if (!isset($token)) {
+			return false;
 		}
 		$info = $this->getUserData($user);
 		if (!$info) {
@@ -126,7 +111,7 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
         $USERINFO['mail'] = $info['mail'];
         $USERINFO['grps'] = $info['grps'];
         
-        $_SERVER['REMOTE_USER'] = $user
+        $_SERVER['REMOTE_USER'] = $user;
         $_SESSION[DOKU_COOKIE]['crowd']['user'] = $user;
         $_SESSION[DOKU_COOKIE]['crowd']['pass'] = $pass;
         $_SESSION[DOKU_COOKIE]['crowd']['info'] = $USERINFO;
@@ -160,17 +145,22 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
 		// reject empty password
 		if (empty($pass)) return false;
 		try {
-			$this->user_tokens[$user] = $this->crowd->authenticatePrincipal($user, $pass, null, null);
+			$this->user_tokens[$user] = $this->_getCrowd()->authenticatePrincipal($user, $pass, null, null);
 		} catch (Services_Atlassian_Crowd_Exception $e) {
+			$this->app_token = NULL;
 			msg("CROWD: could not authenticate user '" . $user . "': " . $e->getMessage(), -1, __LINE__, __FILE__);
 			return false;
 		}
 		return true;
 	}
 	
-	function getUserData($user)	{
+	public function getUserData($user)	{
+		if (!isset($this->user_tokens[$user])) {
+			return false;
+		}
 		if (!$this->_isValidToken($this->user_tokens[$user])) {
-			msg("CROWD: User Token expired for: " . $user, -1, __LINE__, __FILE__);
+			$this->app_token = NULL;
+			//msg("CROWD: User Token expired for: " . $user, -1, __LINE__, __FILE__);
 			return false;
 		}
 		$info = $this->_getUserInfo($this->user_tokens[$user]);
@@ -178,25 +168,26 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
 		return $info;
 	}
     
-    
     function _getCrowd() {
-		if (isset($this->crowd)) {
+		if (isset($this->crowd) && isset($this->app_token)) {
 			return $this->crowd;
 		}
-		try {
-			$this->crowd = new Services_Atlassian_Crowd(array(
-					'app_name' => $this->getConf('binddn'),
-					'app_credential' => $this->getConf('binddn'),
-					'service_url' => $this->getConf('service_url'));
-		} catch (Services_Atlassian_Crowd_Exception $e) {
-			msg("AUTH err: Failed to create crowd service: " . $e->getMessage(), -1, __LINE__, __FILE__);
-			$this->success = false;
-			return;
+		if (!isset($this->crowd)) {
+			try {
+				$this->crowd = new Services_Atlassian_Crowd(array(
+						'app_name' => $this->getConf('app_name'),
+						'app_credential' => $this->getConf('app_credential'),
+						'service_url' => $this->getConf('service_url')));		
+			} catch (Services_Atlassian_Crowd_Exception $e) {
+				msg("AUTH err: Failed to create crowd service: " . $e->getMessage(), -1, __LINE__, __FILE__);
+				$this->success = false;
+				return;
+			}
 		}	
 		try	{
 			$this->app_token = $this->crowd->authenticateApplication();
 		} catch (Services_Atlassian_Crowd_Exception $e)	{
-			if ($this->debug) msg("AUTH err: Failed to authenticate app: " . $e->getMessage(), -1, __LINE__, __FILE__);
+			msg("CROWD AUTH err: Failed to authenticate app: " . $e->getMessage(), -1, __LINE__, __FILE__);
 			$this->success = false;
 			return;
 		}
@@ -214,7 +205,7 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
 	
 	function _getUserInfo($token){
 		try {
-			$principal = $this->crowd->findPrincipalByToken($token);
+			$principal = $this->_getCrowd()->findPrincipalByToken($token);
 		} catch (Services_Atlassian_Crowd_Exception $e) {
 			msg("CROWD: Failed to retrieve User: " . $e->getMessage(), -1, __LINE__, __FILE__);
 			return false;
@@ -231,8 +222,9 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
 
 	function _getGroups($user) {
 		try {
-			 $groupMemberships = $this->crowd->findGroupMemberships($user);
+			 $groupMemberships = $this->_getCrowd()->findGroupMemberships($user);
 		} catch (Services_Atlassian_Crowd_Exception $e) {
+			$this->app_token = NULL;
 			msg("CROWD: Cannot retrieve groups: " . $e->getMessage(), -1, __LINE__, __FILE__);
 			return false;
 		}
