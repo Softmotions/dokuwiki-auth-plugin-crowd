@@ -14,7 +14,7 @@ foreach(explode(PATH_SEPARATOR, ini_get('include_path')) as $dir) {
 	}
 }
 
-require_once DOKU_INC.'inc/auth/basic.class.php';
+//require_once DOKU_INC.'inc/auth/basic.class.php';
 require_once dirname(__FILE__) . '/classes/crowd.class.php';
 
 class auth_plugin_crowd extends DokuWiki_Auth_Plugin
