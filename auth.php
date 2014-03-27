@@ -160,7 +160,7 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
 		}
 		if (!$this->_isValidToken($this->user_tokens[$user])) {
 			$this->app_token = NULL;
-			//msg("CROWD: User Token expired for: " . $user, -1, __LINE__, __FILE__);
+			msg("CROWD: User Token expired for: " . $user, -1, __LINE__, __FILE__);
 			return false;
 		}
 		$info = $this->_getUserInfo($this->user_tokens[$user]);
@@ -169,7 +169,7 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
 	}
     
     function _getCrowd() {
-		if (isset($this->crowd) && isset($this->app_token)) {
+		if (isset($this->crowd) and isset($this->app_token)) {
 			return $this->crowd;
 		}
 		if (!isset($this->crowd)) {
@@ -228,7 +228,11 @@ class auth_plugin_crowd extends DokuWiki_Auth_Plugin {
 			msg("CROWD: Cannot retrieve groups: " . $e->getMessage(), -1, __LINE__, __FILE__);
 			return false;
 		}
-		return reset($groupMemberships);
+		$ret = reset($groupMemberships);
+		if (!is_array($ret)) {
+			$ret = array($ret);
+		}
+		return $ret;
 	}
 }
 
